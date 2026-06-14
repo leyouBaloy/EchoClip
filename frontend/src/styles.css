@@ -651,20 +651,95 @@ input:focus {
 
 @media (max-width: 760px) {
   .app-shell {
-    padding: 12px 64px 12px 12px;
+    padding: 10px 10px 62px;
   }
 
   h1 {
     font-size: 2.15rem;
   }
 
+  .app-shell.has-transcript {
+    padding: 8px 8px 58px;
+  }
+
+  .app-shell.has-transcript .topbar {
+    display: grid;
+    grid-template-columns: 1fr 38px;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .app-shell.has-transcript h1 {
+    font-size: 1.22rem;
+    line-height: 1;
+  }
+
+  .app-shell.has-transcript .eyebrow {
+    font-size: 0.58rem;
+  }
+
+  .app-shell.has-transcript .icon-button {
+    width: 38px;
+    min-height: 38px;
+    flex-basis: 38px;
+  }
+
   .upload-panel {
     grid-template-columns: 1fr;
+  }
+
+  .app-shell.has-transcript .upload-panel {
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    gap: 6px;
+    margin-bottom: 6px;
+    padding: 6px;
   }
 
   .primary-button,
   .sample-button {
     width: 100%;
+  }
+
+  .app-shell.has-transcript .primary-button,
+  .app-shell.has-transcript .sample-button {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .app-shell.has-transcript .primary-button {
+    color: #fff;
+  }
+
+  .app-shell.has-transcript .primary-button svg,
+  .app-shell.has-transcript .sample-button svg {
+    margin: 0;
+  }
+
+  .app-shell.has-transcript .primary-button {
+    font-size: 0;
+  }
+
+  .app-shell.has-transcript .primary-button svg,
+  .app-shell.has-transcript .sample-button svg {
+    display: block;
+  }
+
+  .app-shell.has-transcript .sample-button {
+    font-size: 0;
+  }
+
+  .app-shell.has-transcript .drop-zone {
+    min-height: 38px;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0 9px;
+  }
+
+  .app-shell.has-transcript .drop-zone span {
+    font-size: 0.72rem;
+    font-weight: 800;
   }
 
   .field-row {
@@ -674,16 +749,59 @@ input:focus {
   .workbench,
   .workbench.split {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(132px, 0.52fr) minmax(280px, 1fr);
+    grid-template-rows: minmax(140px, 0.38fr) minmax(400px, 1fr);
+    gap: 7px;
+  }
+
+  .video-stage {
+    border-radius: 7px;
+  }
+
+  .subtitle-panel {
+    gap: 6px;
+    padding: 7px;
+    border-radius: 7px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .control-strip {
+    gap: 6px;
+  }
+
+  .transport-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 48px;
+    gap: 6px;
+    overflow: visible;
   }
 
   .mode-toggle {
     min-width: 0;
-    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .mode-toggle button {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  .tool-button,
+  .status-pill {
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  .tool-button {
+    gap: 5px;
   }
 
   .status-pill {
     margin-left: 0;
+    justify-content: center;
+    padding: 0 6px;
   }
 
   .lyric-line {
@@ -701,13 +819,19 @@ input:focus {
   }
 
   .side-nav {
+    top: auto;
     right: 8px;
-    width: 48px;
+    bottom: 8px;
+    left: 8px;
+    display: grid;
+    width: auto;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 6px;
+    transform: none;
   }
 
   .side-nav button {
-    width: 36px;
-    min-height: 36px;
+    width: 100%;
+    min-height: 38px;
   }
 }
