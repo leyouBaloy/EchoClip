@@ -8,7 +8,8 @@ EchoClip is a mobile-first web app for English listening practice. Upload an Eng
 - Configure an OpenAI-compatible transcription endpoint.
 - Generate sentence and word-level timestamps.
 - Tap words or transcript lines to seek the video.
-- Loop the current sentence for repeated listening practice.
+- Practice sentence by sentence or play continuously.
+- Save uploaded videos and transcripts in a local history library.
 - Keep provider settings in the browser, with no login.
 
 ## Project Structure
@@ -20,7 +21,14 @@ frontend/  Vue 3 + Vite mobile-first practice UI
 
 ## Data Storage
 
-The MVP does not require a database: uploaded media is stored on disk and the latest transcript/settings are kept in the browser. When EchoClip adds history, vocabulary, translation cache, or imported-video records, use SQLite as the local application database.
+EchoClip stores uploaded media on disk and saves project history in SQLite:
+
+```text
+backend/storage/uploads/
+backend/storage/echoclip.sqlite3
+```
+
+The history directory page uses this database to reopen previous videos and transcripts. Future features such as vocabulary, translation cache, and imported-video records should also use SQLite.
 
 ## Quick Start
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
+import sqlite3
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,11 +19,13 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 UPLOAD_DIR = Path(os.getenv("ECHOCLIP_UPLOAD_DIR", "./storage/uploads")).resolve()
+DB_PATH = Path(os.getenv("ECHOCLIP_DB_PATH", "./storage/echoclip.sqlite3")).resolve()
 SAMPLE_DIR = Path(os.getenv("ECHOCLIP_SAMPLE_DIR", "../test-assets")).resolve()
 DEFAULT_BASE_URL = os.getenv("ECHOCLIP_DEFAULT_BASE_URL", "http://192.168.2.172:8000/v1").rstrip("/")
 DEFAULT_MODEL = os.getenv("ECHOCLIP_DEFAULT_MODEL", "whisper-1")
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="EchoClip API", version="0.1.0")
 
@@ -61,9 +66,93 @@ class TranscriptResponse(BaseModel):
     words: list[Word]
 
 
+class ProjectListItem(BaseModel):
+    id: str
+    filename: str
+    media_url: str
+    language: Optional[str] = None
+    duration: Optional[float] = None
+    text_preview: str
+    segment_count: int
+    word_count: int
+    created_at: str
+    updated_at: str
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectListItem]
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/projects", response_model=ProjectListResponse)
+def list_projects(request: Request) -> ProjectListResponse:
+    with connect_db() as db:
+        rows = db.execute(
+            """
+            SELECT id, original_filename, stored_filename, language, duration, text,
+                   segment_count, word_count, created_at, updated_at
+            FROM projects
+            ORDER BY updated_at DESC
+            """
+        ).fetchall()
+
+    projects = [
+        ProjectListItem(
+            id=row["id"],
+            filename=row["original_filename"],
+            media_url=str(request.url_for("media", path=row["stored_filename"])),
+            language=row["language"],
+            duration=row["duration"],
+            text_preview=preview_text(row["text"]),
+            segment_count=row["segment_count"],
+            word_count=row["word_count"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in rows
+    ]
+    return ProjectListResponse(projects=projects)
+
+
+@app.get("/api/projects/{project_id}", response_model=TranscriptResponse)
+def get_project(project_id: str, request: Request) -> TranscriptResponse:
+    with connect_db() as db:
+        row = db.execute(
+            """
+            SELECT id, original_filename, stored_filename, language, duration, text, transcript_json
+            FROM projects
+            WHERE id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    try:
+        transcript = json.loads(row["transcript_json"])
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="Stored transcript is invalid.") from exc
+
+    return TranscriptResponse(
+        id=row["id"],
+        filename=row["original_filename"],
+        media_url=str(request.url_for("media", path=row["stored_filename"])),
+        language=row["language"],
+        duration=row["duration"],
+        text=row["text"],
+        segments=transcript.get("segments", []),
+        words=transcript.get("words", []),
+    )
 
 
 @app.post("/api/transcriptions", response_model=TranscriptResponse)
@@ -96,7 +185,7 @@ async def transcribe_video(
     )
 
     normalized = normalize_transcript(raw)
-    return TranscriptResponse(
+    result = TranscriptResponse(
         id=project_id,
         filename=file.filename or stored_filename,
         media_url=str(request.url_for("media", path=stored_filename)),
@@ -106,6 +195,75 @@ async def transcribe_video(
         segments=normalized["segments"],
         words=normalized["words"],
     )
+    save_project(
+        project=result,
+        stored_filename=stored_filename,
+        original_filename=file.filename or stored_filename,
+    )
+    return result
+
+
+def init_db() -> None:
+    with connect_db() as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                original_filename TEXT NOT NULL,
+                stored_filename TEXT NOT NULL,
+                language TEXT,
+                duration REAL,
+                text TEXT NOT NULL,
+                transcript_json TEXT NOT NULL,
+                segment_count INTEGER NOT NULL,
+                word_count INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at)")
+
+
+def connect_db() -> sqlite3.Connection:
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def save_project(*, project: TranscriptResponse, stored_filename: str, original_filename: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    transcript_json = project.model_dump_json()
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO projects (
+                id, original_filename, stored_filename, language, duration, text, transcript_json,
+                segment_count, word_count, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project.id,
+                original_filename,
+                stored_filename,
+                project.language,
+                project.duration,
+                project.text,
+                transcript_json,
+                len(project.segments),
+                len(project.words),
+                now,
+                now,
+            ),
+        )
+
+
+def preview_text(text: str, limit: int = 140) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit].rstrip()}..."
 
 
 async def request_transcription(

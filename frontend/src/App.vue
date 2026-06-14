@@ -6,10 +6,12 @@ import {
   Clapperboard,
   Columns3,
   Copy,
+  FolderOpen,
   Languages,
   LoaderCircle,
   Pause,
   Play,
+  Plus,
   RotateCcw,
   Rows3,
   Settings2,
@@ -42,6 +44,9 @@ const mode = ref(localStorage.getItem('echoclip.mode') || 'guided')
 const layout = ref(localStorage.getItem(LAYOUT_STORAGE_KEY) || defaultLayout())
 const isPlaying = ref(false)
 const copiedSegmentIndex = ref(-1)
+const view = ref('practice')
+const historyItems = ref([])
+const historyLoading = ref(false)
 
 function defaultBackendApi() {
   const protocol = window.location.protocol || 'http:'
@@ -93,6 +98,7 @@ onMounted(() => {
       localStorage.removeItem('echoclip.lastTranscript')
     }
   }
+  loadHistory()
 })
 
 function pickFile(event) {
@@ -142,7 +148,9 @@ async function submitTranscription() {
     targetSegmentIndex.value = 0
     segmentRefs.value = []
     localStorage.setItem('echoclip.lastTranscript', JSON.stringify(payload))
+    await loadHistory()
     await nextTick()
+    view.value = 'practice'
     restartFromBeginning()
   } catch (caught) {
     if (caught instanceof TypeError && caught.message === 'Failed to fetch') {
@@ -166,6 +174,70 @@ async function loadSampleVideo() {
   } catch (caught) {
     error.value = caught.message || 'Could not load sample video.'
   }
+}
+
+async function loadHistory() {
+  historyLoading.value = true
+  try {
+    const response = await fetch(`${apiUrl.value.replace(/\/$/, '')}/api/projects`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(payload?.detail || 'Could not load history.')
+    historyItems.value = payload?.projects || []
+  } catch (caught) {
+    error.value = caught.message || 'Could not load history.'
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+async function openProject(projectId) {
+  error.value = ''
+  try {
+    const response = await fetch(`${apiUrl.value.replace(/\/$/, '')}/api/projects/${projectId}`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(payload?.detail || 'Could not open history item.')
+    transcript.value = payload
+    file.value = null
+    fileName.value = payload.filename
+    activeSegmentIndex.value = 0
+    activeWordIndex.value = -1
+    targetSegmentIndex.value = 0
+    segmentRefs.value = []
+    localStorage.setItem('echoclip.lastTranscript', JSON.stringify(payload))
+    view.value = 'practice'
+    await nextTick()
+    seekTo(payload.segments?.[0]?.start || 0, 0, -1, false)
+  } catch (caught) {
+    error.value = caught.message || 'Could not open history item.'
+  }
+}
+
+function showLibrary() {
+  view.value = 'library'
+  loadHistory()
+}
+
+function newPractice() {
+  view.value = 'practice'
+  error.value = ''
+}
+
+function formatDuration(seconds) {
+  if (!seconds && seconds !== 0) return '--:--'
+  const total = Math.round(seconds)
+  const minutes = Math.floor(total / 60)
+  const rest = String(total % 60).padStart(2, '0')
+  return `${minutes}:${rest}`
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function setSegmentRef(element, index) {
@@ -278,11 +350,11 @@ function wordGlobalIndex(word) {
 </script>
 
 <template>
-  <main class="app-shell" :class="{ 'has-transcript': hasTranscript }">
+  <main class="app-shell" :class="{ 'has-transcript': hasTranscript && view === 'practice', 'is-library': view === 'library' }">
     <header class="topbar">
       <div>
         <p class="eyebrow">EchoClip</p>
-        <h1>Listen closer.</h1>
+        <h1>{{ view === 'library' ? 'Library.' : 'Listen closer.' }}</h1>
       </div>
       <button class="icon-button" type="button" title="Settings" @click="showSettings = !showSettings">
         <Settings2 :size="20" />
@@ -314,6 +386,48 @@ function wordGlobalIndex(word) {
       </label>
     </section>
 
+    <section v-if="view === 'library'" class="library-page">
+      <div class="library-header">
+        <div>
+          <p class="eyebrow">Saved Clips</p>
+          <h2>Continue where you left off.</h2>
+        </div>
+        <button class="primary-button compact-text" type="button" @click="newPractice">
+          <Plus :size="18" />
+          New
+        </button>
+      </div>
+
+      <div v-if="historyLoading" class="library-empty">
+        <LoaderCircle class="spin" :size="22" />
+        <span>Loading history</span>
+      </div>
+      <div v-else-if="!historyItems.length" class="library-empty">
+        <FolderOpen :size="28" />
+        <span>No saved clips yet.</span>
+      </div>
+      <div v-else class="history-list">
+        <button
+          v-for="item in historyItems"
+          :key="item.id"
+          class="history-item"
+          type="button"
+          @click="openProject(item.id)"
+        >
+          <span class="history-title">{{ item.filename }}</span>
+          <span class="history-preview">{{ item.text_preview }}</span>
+          <span class="history-meta">
+            <span>{{ formatDuration(item.duration) }}</span>
+            <span>{{ item.segment_count }} sentences</span>
+            <span>{{ item.word_count }} words</span>
+            <span>{{ formatDate(item.updated_at) }}</span>
+          </span>
+        </button>
+      </div>
+      <p v-if="error" class="error library-error">{{ error }}</p>
+    </section>
+
+    <template v-else>
     <section class="panel upload-panel">
       <label
         class="drop-zone"
@@ -434,7 +548,15 @@ function wordGlobalIndex(word) {
       </section>
     </section>
 
-    <nav class="side-nav" aria-label="Future features">
+    </template>
+
+    <nav class="side-nav" aria-label="App navigation">
+      <button type="button" title="Library" :class="{ selected: view === 'library' }" @click="showLibrary">
+        <FolderOpen :size="19" /><span>Library</span>
+      </button>
+      <button type="button" title="Practice" :class="{ selected: view === 'practice' }" @click="newPractice">
+        <Plus :size="19" /><span>Practice</span>
+      </button>
       <button type="button" disabled title="Translate"><Languages :size="19" /><span>Translate</span></button>
       <button type="button" disabled title="Vocabulary"><BookOpen :size="19" /><span>Vocabulary</span></button>
       <button type="button" disabled title="Imports"><WalletCards :size="19" /><span>Imports</span></button>
