@@ -5,6 +5,7 @@ import {
   Check,
   Clapperboard,
   Columns3,
+  Copy,
   Languages,
   LoaderCircle,
   Pause,
@@ -40,6 +41,7 @@ const dragActive = ref(false)
 const mode = ref(localStorage.getItem('echoclip.mode') || 'guided')
 const layout = ref(localStorage.getItem(LAYOUT_STORAGE_KEY) || defaultLayout())
 const isPlaying = ref(false)
+const copiedSegmentIndex = ref(-1)
 
 function defaultBackendApi() {
   const protocol = window.location.protocol || 'http:'
@@ -214,6 +216,18 @@ function nextSegment() {
 
 function pausePlayback() {
   videoRef.value?.pause()
+}
+
+async function copySegment(segment, index) {
+  try {
+    await navigator.clipboard.writeText(segment.text)
+    copiedSegmentIndex.value = index
+    window.setTimeout(() => {
+      if (copiedSegmentIndex.value === index) copiedSegmentIndex.value = -1
+    }, 1200)
+  } catch {
+    error.value = 'Could not copy subtitle.'
+  }
 }
 
 function toggleLayout() {
@@ -409,6 +423,10 @@ function wordGlobalIndex(word) {
                   {{ word.text }}
                 </button>
               </span>
+              <button class="copy-button" type="button" title="Copy subtitle" @click="copySegment(segment, index)">
+                <Check v-if="copiedSegmentIndex === index" :size="15" />
+                <Copy v-else :size="15" />
+              </button>
             </div>
           </div>
           <div class="lyric-spacer" />

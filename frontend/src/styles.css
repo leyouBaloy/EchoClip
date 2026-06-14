@@ -448,10 +448,11 @@ input:focus {
 }
 
 .active-line {
+  position: relative;
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   gap: 10px;
-  padding: 10px 6px;
+  padding: 10px 42px 10px 6px;
 }
 
 .active-time {
@@ -468,6 +469,28 @@ input:focus {
   flex-wrap: wrap;
   gap: 4px;
   align-items: baseline;
+}
+
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #5f716a;
+  background: rgba(255, 255, 255, 0.54);
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.copy-button:hover {
+  color: #13201b;
+  background: rgba(255, 255, 255, 0.94);
+  opacity: 1;
 }
 
 .word-chip {
@@ -567,7 +590,7 @@ input:focus {
 
   .active-line {
     grid-template-columns: 46px minmax(0, 1fr);
-    padding: 8px 4px;
+    padding: 8px 38px 8px 4px;
   }
 
   .side-nav {
