@@ -26,6 +26,7 @@ const baseUrl = ref(localStorage.getItem('echoclip.baseUrl') || 'http://192.168.
 const model = ref(localStorage.getItem('echoclip.model') || 'whisper-1')
 const apiKey = ref(localStorage.getItem('echoclip.apiKey') || '')
 const language = ref(localStorage.getItem('echoclip.language') || 'en')
+const preferEmbedded = ref(localStorage.getItem('echoclip.preferEmbedded') !== 'false')
 
 const file = ref(null)
 const fileName = ref('')
@@ -64,14 +65,27 @@ const activeSegmentNumber = computed(() => {
   if (!hasTranscript.value) return '0 / 0'
   return `${activeSegmentIndex.value + 1} / ${transcript.value.segments.length}`
 })
+const loadingLabel = computed(() => {
+  if (!isLoading.value) return 'Build transcript'
+  return preferEmbedded.value ? 'Importing subtitles…' : 'Transcribing…'
+})
+const transcriptSourceLabel = computed(() => {
+  if (!transcript.value?.source) return ''
+  if (transcript.value.source === 'embedded') {
+    const track = transcript.value.subtitle_track ? ` (${transcript.value.subtitle_track})` : ''
+    return `Using embedded subtitles${track}`
+  }
+  return 'Transcribed with Whisper'
+})
 const layoutIcon = computed(() => (layout.value === 'split' ? Rows3 : Columns3))
 
-watch([apiUrl, baseUrl, model, apiKey, language], () => {
+watch([apiUrl, baseUrl, model, apiKey, language, preferEmbedded], () => {
   localStorage.setItem('echoclip.apiUrl', apiUrl.value)
   localStorage.setItem('echoclip.baseUrl', baseUrl.value)
   localStorage.setItem('echoclip.model', model.value)
   localStorage.setItem('echoclip.apiKey', apiKey.value)
   localStorage.setItem('echoclip.language', language.value)
+  localStorage.setItem('echoclip.preferEmbedded', preferEmbedded.value ? 'true' : 'false')
 })
 
 watch(mode, () => {
@@ -132,6 +146,7 @@ async function submitTranscription() {
   body.append('base_url', baseUrl.value.trim())
   body.append('model', model.value.trim())
   if (language.value.trim()) body.append('language', language.value.trim())
+  body.append('prefer_embedded', preferEmbedded.value ? 'true' : 'false')
 
   try {
     const response = await fetch(`${apiUrl.value.replace(/\/$/, '')}/api/transcriptions`, {
@@ -384,6 +399,10 @@ function wordGlobalIndex(word) {
         API key
         <input v-model="apiKey" type="password" autocomplete="off" placeholder="Optional" />
       </label>
+      <label class="checkbox-row">
+        <input v-model="preferEmbedded" type="checkbox" />
+        <span>Prefer embedded subtitles when available</span>
+      </label>
     </section>
 
     <section v-if="view === 'library'" class="library-page">
@@ -443,13 +462,14 @@ function wordGlobalIndex(word) {
       <button class="primary-button" type="button" :disabled="isLoading" @click="submitTranscription">
         <LoaderCircle v-if="isLoading" class="spin" :size="18" />
         <Check v-else :size="18" />
-        {{ isLoading ? 'Transcribing' : 'Build transcript' }}
+        {{ loadingLabel }}
       </button>
       <button class="sample-button" type="button" :disabled="isLoading" @click="loadSampleVideo">
         <Clapperboard :size="18" />
         Sample
       </button>
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-else-if="transcriptSourceLabel" class="source-note">{{ transcriptSourceLabel }}</p>
     </section>
 
     <section class="workbench" :class="{ split: layout === 'split' }">
@@ -506,6 +526,7 @@ function wordGlobalIndex(word) {
             Start
           </button>
           <div class="status-pill">{{ activeSegmentNumber }}</div>
+          <div v-if="transcriptSourceLabel" class="source-pill">{{ transcriptSourceLabel }}</div>
         </div>
 
         <div ref="transcriptWindowRef" class="lyric-window">

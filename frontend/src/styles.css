@@ -249,6 +249,26 @@ input:focus {
   font-weight: 700;
 }
 
+.source-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #2f5a4d;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }
@@ -468,6 +488,24 @@ input:focus {
   margin-left: auto;
   color: #46645a;
   font-size: 0.84rem;
+}
+
+.source-pill {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(47, 90, 77, 0.18);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #2f5a4d;
+  background: rgba(226, 244, 236, 0.82);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lyric-window {

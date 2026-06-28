@@ -16,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.subtitles import try_extract_embedded_subtitles
+from app.media import prepare_web_playback
+
 load_dotenv()
 
 UPLOAD_DIR = Path(os.getenv("ECHOCLIP_UPLOAD_DIR", "./storage/uploads")).resolve()
@@ -64,6 +67,8 @@ class TranscriptResponse(BaseModel):
     text: str
     segments: list[Segment]
     words: list[Word]
+    source: Optional[str] = None
+    subtitle_track: Optional[str] = None
 
 
 class ProjectListItem(BaseModel):
@@ -152,6 +157,8 @@ def get_project(project_id: str, request: Request) -> TranscriptResponse:
         text=row["text"],
         segments=transcript.get("segments", []),
         words=transcript.get("words", []),
+        source=transcript.get("source"),
+        subtitle_track=transcript.get("subtitle_track"),
     )
 
 
@@ -163,6 +170,7 @@ async def transcribe_video(
     base_url: str = Form(DEFAULT_BASE_URL),
     model: str = Form(DEFAULT_MODEL),
     language: Optional[str] = Form(None),
+    prefer_embedded: str = Form("true"),
 ) -> TranscriptResponse:
     project_id = uuid.uuid4().hex
     extension = Path(file.filename or "video.mp4").suffix or ".mp4"
@@ -175,29 +183,45 @@ async def transcribe_video(
     finally:
         await file.close()
 
-    raw = await request_transcription(
-        stored_path=stored_path,
-        original_filename=file.filename or stored_filename,
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        language=language,
-    )
+    playback_path = prepare_web_playback(stored_path)
+    playback_filename = playback_path.name
+
+    use_embedded = prefer_embedded.strip().lower() in {"1", "true", "yes", "on"}
+    raw: dict[str, Any]
+    source = "whisper"
+
+    if use_embedded:
+        embedded = try_extract_embedded_subtitles(stored_path, language=language)
+        if embedded:
+            raw = embedded
+            source = "embedded"
+
+    if source != "embedded":
+        raw = await request_transcription(
+            stored_path=stored_path,
+            original_filename=file.filename or stored_filename,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            language=language,
+        )
 
     normalized = normalize_transcript(raw)
     result = TranscriptResponse(
         id=project_id,
         filename=file.filename or stored_filename,
-        media_url=str(request.url_for("media", path=stored_filename)),
+        media_url=str(request.url_for("media", path=playback_filename)),
         language=raw.get("language") or language,
         duration=coerce_float(raw.get("duration")),
         text=normalized["text"],
         segments=normalized["segments"],
         words=normalized["words"],
+        source=source,
+        subtitle_track=raw.get("subtitle_track"),
     )
     save_project(
         project=result,
-        stored_filename=stored_filename,
+        stored_filename=playback_filename,
         original_filename=file.filename or stored_filename,
     )
     return result
@@ -233,7 +257,14 @@ def connect_db() -> sqlite3.Connection:
 
 def save_project(*, project: TranscriptResponse, stored_filename: str, original_filename: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    transcript_json = project.model_dump_json()
+    transcript_json = json.dumps(
+        {
+            "segments": [segment.model_dump() for segment in project.segments],
+            "words": [word.model_dump() for word in project.words],
+            "source": project.source,
+            "subtitle_track": project.subtitle_track,
+        }
+    )
     with connect_db() as db:
         db.execute(
             """
